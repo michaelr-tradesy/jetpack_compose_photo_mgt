@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Photo Management Exercise</string>
+    <string name="continue_text">Add Image</string>
+    <string name="instructions">To begin adding images, press the ADD IMAGE button.</string>
+    <string name="no_images_available">No images are available.</string>
+    <string name="image_included">Image Included</string>
+</resources>

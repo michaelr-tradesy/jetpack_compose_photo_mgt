@@ -1,0 +1,37 @@
+buildscript {
+    ext {
+        arrow_version = "1.0.0"
+        compose_version = "1.1.1"
+        google_api_version = "20.1.0"
+        google_api_location_version = "19.0.1"
+        google_maps_api_version = "18.0.2"
+        google_services_version = "3.1.0"
+        google_wallet_api_version = "19.1.0"
+        kotlinVersion = "1.6.10"
+        mvi_kotlin_version = "2.0.3"
+    }
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+        maven { url "https://dl.bintray.com/arrow-kt/arrow-kt/" }
+        maven { url 'https://oss.jfrog.org/artifactory/oss-snapshot-local/' }
+        maven { url "https://oss.sonatype.org/content/repositories/snapshots/" }
+        maven { url "https://oss.jfrog.org/libs-snapshot" }
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle:7.1.2")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+        classpath("org.jetbrains.kotlin:kotlin-serialization:$kotlinVersion")
+        classpath("com.google.gms:google-services:$google_services_version")
+    }
+}// Top-level build file where you can add configuration options common to all sub-projects/modules.
+plugins {
+    id 'com.android.application' version '7.1.2' apply false
+    id 'com.android.library' version '7.1.2' apply false
+    id 'org.jetbrains.kotlin.android' version '1.5.31' apply false
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}

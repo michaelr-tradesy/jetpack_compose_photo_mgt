@@ -1,14 +1,11 @@
 package com.example.photomanagementexercise
 
-import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
-import android.util.Log
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,7 +36,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.core.app.ActivityOptionsCompat
+import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.photomanagementexercise.access.AccessPermissionType
@@ -108,8 +105,26 @@ class MainActivity : DefaultAppActivity() {
                 shouldShowOnProgress.value = false
             }
         }
+    private val takePhotoActivityResultLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.TakePicture(),
+        ) { isSuccessful ->
+            if (isSuccessful) {
+                coroutineScope.launch(Dispatchers.IO) {
+                    shouldShowOnProgress.value = true
+                    println("MROEBUCK: takePhoto() isSuccessful=[$isSuccessful]")
+                    photoOutput?.let {
+                        val list = imageFiles.value + it
+                        imageFiles.value = list
+                    }
+                    shouldShowOnProgress.value = false
+                }
+            }
+        }
     private val galleryActivityResultLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+        registerForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { permissions ->
             var canContinue = true
 
             currentPermissions.clear()
@@ -271,7 +286,9 @@ class MainActivity : DefaultAppActivity() {
                                             }
                                         },
                                         modifier = Modifier,
-                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color.White),
+                                        colors = ButtonDefaults.buttonColors(
+                                            backgroundColor = Color.White
+                                        ),
                                         shape = RoundedCornerShape(4.dp)
                                     ) {
                                         Icon(
@@ -300,7 +317,9 @@ class MainActivity : DefaultAppActivity() {
                                             }
                                         },
                                         modifier = Modifier,
-                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color.White),
+                                        colors = ButtonDefaults.buttonColors(
+                                            backgroundColor = Color.White
+                                        ),
                                         shape = RoundedCornerShape(4.dp)
                                     ) {
                                         Icon(
@@ -328,7 +347,9 @@ class MainActivity : DefaultAppActivity() {
                                             }
                                         },
                                         modifier = Modifier,
-                                        colors = ButtonDefaults.buttonColors(backgroundColor = Color.White),
+                                        colors = ButtonDefaults.buttonColors(
+                                            backgroundColor = Color.White
+                                        ),
                                         shape = RoundedCornerShape(4.dp)
                                     ) {
                                         Icon(
@@ -453,9 +474,15 @@ class MainActivity : DefaultAppActivity() {
     }
 
     private fun takeScreenshotFromCamera() {
-        val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
-        photoOutput = Uri.fromFile(cameraImageFile())
-        activityResultLauncher.launch(intent, ActivityOptionsCompat.makeBasic())
+        val file = cameraImageFile()
+        photoOutput =
+            FileProvider.getUriForFile(
+                this,
+                applicationContext.packageName + ".provider",
+                file
+            )
+
+        takePhotoActivityResultLauncher.launch(photoOutput)
     }
 //
 //    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {

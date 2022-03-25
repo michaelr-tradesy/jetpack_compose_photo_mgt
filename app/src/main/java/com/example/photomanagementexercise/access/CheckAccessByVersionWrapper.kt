@@ -8,8 +8,15 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
+import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResult
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts.*
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.example.photomanagementexercise.AppActivityResult
+import com.example.photomanagementexercise.AppActivityResult.Companion.registerForActivityResult
+
 
 /**
  * @author Coach Roebuck
@@ -99,7 +106,11 @@ interface CheckAccessByVersionWrapper {
  * This interface serves the default implementation of the CheckAccessByVersionWrapper interface.
  * @since 2.17
  */
-class DefaultCheckAccessByVersionWrapper : CheckAccessByVersionWrapper {
+class DefaultCheckAccessByVersionWrapper(
+    private val activityLauncher: AppActivityResult<Intent, ActivityResult>,
+    private val requestPermissionLauncher: AppActivityResult<String, ActivityResult>
+    ) : CheckAccessByVersionWrapper {
+
     override fun shouldShowRequestPermissionRationale(
         activity: Activity,
         permission: String
@@ -115,7 +126,7 @@ class DefaultCheckAccessByVersionWrapper : CheckAccessByVersionWrapper {
         identifier: Int
     ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            try {
+            val intent = try {
                 val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
                 intent.addCategory("android.intent.category.DEFAULT")
                 intent.data = Uri.parse(
@@ -124,27 +135,51 @@ class DefaultCheckAccessByVersionWrapper : CheckAccessByVersionWrapper {
                         activity.applicationContext.packageName
                     )
                 )
-                ActivityCompat.startActivityForResult(activity, intent, identifier, null)
+                intent
             } catch (e: Exception) {
                 val intent = Intent()
                 intent.action = Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION
-                ActivityCompat.startActivityForResult(activity, intent, identifier, null)
+                intent
             }
+            activityLauncher.launch(intent, object :
+                AppActivityResult.OnActivityResult<ActivityResult> {
+                override fun onActivityResult(result: ActivityResult) {
+                    if (result.resultCode == ComponentActivity.RESULT_OK) {
+                        // There are no request codes
+                        val data = result.data
+                        val bitmap = data?.data
+                        println("MROEBUCK: YAY!!")
+                    }
+                }
+            })
         } else {
-            //below android 11
-            ActivityCompat.requestPermissions(
+            requestPermissions(
                 activity,
-                arrayOf(AccessPermissionType.AccessWriteExternalStorage.permission),
+                AccessPermissionType.AccessWriteExternalStorage.permission,
                 identifier
             )
         }
     }
     override fun requestPermissions(activity: Activity, permission: String, identifier: Int) {
-        ActivityCompat.requestPermissions(
-            activity,
-            arrayOf(permission),
-            identifier
-        )
+        requestPermissionLauncher.launch(permission, object :
+            AppActivityResult.OnActivityResult<ActivityResult> {
+            override fun onActivityResult(result: ActivityResult) {
+                if (result.resultCode == ComponentActivity.RESULT_OK) {
+                    // There are no request codes
+//                    val data = result.data
+//                    val bitmap = data?.data
+                    println("MROEBUCK: YAY!!")
+                } else {
+                    println("MROEBUCK: NEY!!")
+                }
+                println("MROEBUCK: result=[$result]")
+            }
+        })
+//        ActivityCompat.requestPermissions(
+//            activity,
+//            arrayOf(permission),
+//            identifier
+//        )
     }
 
     override fun checkSelfPermission(activity: Activity, permission: String): Int {

@@ -1,14 +1,10 @@
 package com.example.photomanagementexercise
 
-import androidx.activity.result.ActivityResultCaller
-import androidx.activity.result.contract.ActivityResultContract
-import com.example.photomanagementexercise.AppActivityResult.OnActivityResult
-import androidx.activity.result.ActivityResultLauncher
-import kotlin.jvm.JvmOverloads
-import com.example.photomanagementexercise.AppActivityResult
 import android.content.Intent
 import androidx.activity.result.ActivityResult
-import androidx.activity.result.ActivityResultCallback
+import androidx.activity.result.ActivityResultCaller
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 
 class AppActivityResult<Input, Result> private constructor(

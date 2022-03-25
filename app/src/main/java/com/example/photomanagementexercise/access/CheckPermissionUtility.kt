@@ -5,11 +5,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import arrow.core.Either
-import arrow.core.Ior
-import com.badoo.reaktive.subject.behavior.BehaviorSubject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.flow
 
 /**
  * @author Coach Roebuck
@@ -58,7 +55,9 @@ interface CheckPermissionUtility {
     class PermissionsDeniedThrowable(val permission: AccessPermissionType) : Throwable()
     class UserPermissionRequiredThrowable(val permission: AccessPermissionType) : Throwable()
 
-    val state: StateFlow<Either<Throwable, Int>>
+    val state: StateFlow<Either<Throwable, Boolean>>
+    fun onPermissionDenied()
+    fun onPermissionAccepted()
 }
 
 /**
@@ -67,7 +66,7 @@ interface CheckPermissionUtility {
  * @since 2.17
  */
 class DefaultCheckPermissionUtility(
-    private val CheckAccessByVersionWrapper: CheckAccessByVersionWrapper = DefaultCheckAccessByVersionWrapper()
+    private val CheckAccessByVersionWrapper: CheckAccessByVersionWrapper
 ) : CheckPermissionUtility {
 
     private val androidSdkVersion = "VERSION: ${Build.VERSION.SDK_INT}: ${
@@ -87,9 +86,25 @@ class DefaultCheckPermissionUtility(
     private var currentPermission: AccessPermissionType? = null
 
     // Backing property to avoid state updates from other classes
-    private val _state: MutableStateFlow<Either<Throwable, Int>> = MutableStateFlow(Either.Right(0))
+    private val _state: MutableStateFlow<Either<Throwable, Boolean>> = MutableStateFlow(Either.Right(false))
     // The UI collects from this StateFlow to get its state updates
-    override val state: StateFlow<Either<Throwable, Int>> = _state
+    override val state: StateFlow<Either<Throwable, Boolean>> = _state
+
+    override fun onPermissionDenied() {
+        println("MROEBUCK: Permission DENIED: [${currentPermission?.permission}]...")
+        currentPermission?.identifier?.let {
+            _state.value = Either.Left(
+                CheckPermissionUtility.PermissionsDeniedThrowable(
+                    AccessPermissionType.valueOf(it)
+                )
+            )
+        }
+    }
+
+    override fun onPermissionAccepted() {
+        println("MROEBUCK: Permission Granted: [${currentPermission?.permission}]...")
+        checkNextPermission()
+    }
 
     override fun start(activity: Activity, permissions: MutableList<AccessPermissionType>) {
         this.activity = activity
@@ -101,6 +116,7 @@ class DefaultCheckPermissionUtility(
         checkNextPermission()
     }
 
+    @Deprecated("Use onPermissionAccepted() and onPermissionDenied() instead. The current permission is monitored and retained")
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<String>,
@@ -113,12 +129,12 @@ class DefaultCheckPermissionUtility(
                             grantResults[0] == PackageManager.PERMISSION_GRANTED)
                 ) {
                     // permission was granted, yay! Do the task(s) you need to do.
-                    Log.i(this::class.java.simpleName, "Permission Granted: [${currentPermission?.permission}]...")
+                    println("MROEBUCK: Permission Granted: [${currentPermission?.permission}]...")
                     checkNextPermission()
                 } else {
                     // permission denied, boo! Disable the
                     // functionality that depends on this permission.
-                    Log.i(this::class.java.simpleName, "Permission DENIED: [${currentPermission?.permission}]...")
+                    println("MROEBUCK: Permission DENIED: [${currentPermission?.permission}]...")
                     _state.value = Either.Left(
                         CheckPermissionUtility.PermissionsDeniedThrowable(
                             AccessPermissionType.valueOf(requestCode)
@@ -140,7 +156,7 @@ class DefaultCheckPermissionUtility(
         currentPermission = if (permissions.isNotEmpty()) permissions.removeAt(0) else null
 
         currentPermission?.let { checkPermission(it) } ?: run {
-            _state.value = Either.Right(0)
+            _state.value = Either.Right(true)
         }
     }
 
@@ -163,7 +179,7 @@ class DefaultCheckPermissionUtility(
                     // Show an explanation to the user *asynchronously* -- don't block
                     // this thread waiting for the user's response! After the user
                     // sees the explanation, try again to request the permission.
-                    Log.i(this::class.java.simpleName, "Permission request: [${currentPermission.permission}]..." )
+                    println("MROEBUCK: Permission request: [${currentPermission.permission}]..." )
                     _state.value = Either.Left(CheckPermissionUtility.UserPermissionRequiredThrowable(currentPermission))
                 }
                 // No explanation needed, we can request the permission.
@@ -171,23 +187,24 @@ class DefaultCheckPermissionUtility(
                     activity,
                     currentPermission
                 ) -> {
+                    println("MROEBUCK: Must request permission: [${currentPermission.permission}]...")
                     CheckAccessByVersionWrapper.requestManageExternalStoragePermissions(
                         activity,
                         currentPermission.identifier
                     )
-                    Log.i(this::class.java.simpleName, "Must request permission: [${currentPermission.permission}]...")
                 }
                 CheckAccessByVersionWrapper.canAccessWriteExternalStorage(currentPermission) -> {
+                    println("MROEBUCK: Must request permission: [${currentPermission.permission}]...")
                     CheckAccessByVersionWrapper.requestPermissions(
                         activity,
                         currentPermission.name,
                         currentPermission.identifier
                     )
-                    Log.i(this::class.java.simpleName, "Must request permission: [${currentPermission.permission}]...")
                 }
                 CheckAccessByVersionWrapper.canCheckNormalPermission()
                         && currentPermission != AccessPermissionType.ManageExternalStorage -> {
                     // No explanation needed, we can request the permission.
+                    println("MROEBUCK: Requesting permission: [${currentPermission.permission}]...")
                     CheckAccessByVersionWrapper.requestPermissions(
                         activity,
                         currentPermission.permission,

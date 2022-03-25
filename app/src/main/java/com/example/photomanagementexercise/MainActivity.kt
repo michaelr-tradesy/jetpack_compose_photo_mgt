@@ -41,7 +41,9 @@ import androidx.lifecycle.lifecycleScope
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.photomanagementexercise.access.AccessPermissionType.*
+import com.example.photomanagementexercise.access.CheckAccessByVersionWrapper
 import com.example.photomanagementexercise.access.CheckPermissionUtility
+import com.example.photomanagementexercise.access.DefaultCheckAccessByVersionWrapper
 import com.example.photomanagementexercise.access.DefaultCheckPermissionUtility
 import com.example.photomanagementexercise.ui.theme.PhotoManagementExerciseTheme
 import kotlinx.coroutines.CoroutineScope
@@ -70,13 +72,11 @@ class MainActivity : DefaultAppActivity() {
     private val galleryFileName = "gallery.image_%s.png"
     private val croppedFileName = "cropped.image_%s.png"
     private val emptyImageUri: Uri = Uri.parse("file://dev/null")
-
     private var photoOutput: Uri? = null
 
     private lateinit var shouldShowOnBoarding: MutableState<Boolean>
     private lateinit var shouldShowOnProgress: MutableState<Boolean>
     private lateinit var imageFiles: MutableState<List<Uri>>
-    private lateinit var checkPermissionUtility: CheckPermissionUtility
     private lateinit var coroutineScope: CoroutineScope
 
     @Composable
@@ -127,6 +127,8 @@ class MainActivity : DefaultAppActivity() {
                                         .data(uri)
                                         .crossfade(true)
                                         .build(),
+                                    error = painterResource(R.drawable.ic_launcher_foreground),
+                                    fallback = painterResource(R.drawable.ic_launcher_foreground),
                                     placeholder = painterResource(R.drawable.ic_launcher_foreground),
                                     contentDescription = stringResource(R.string.image_included),
                                     contentScale = ContentScale.Crop,
@@ -317,19 +319,21 @@ class MainActivity : DefaultAppActivity() {
     }
 
     private fun onSelectImage(callback: () -> Unit) {
-        checkPermissionUtility = DefaultCheckPermissionUtility()
         lifecycleScope.launch {
             checkPermissionUtility.state.collect { value ->
-                val result = value.fold({ it }, { it })
-                if (result is Int) {
-                    callback()
-                }
+                val result = value.fold({ it }, {
+                    if(it) {
+                        callback()
+                    }
+                    it
+                })
                 println("value=[$value]")
             }
         }
 
         checkPermissionUtility.start(
-            this@MainActivity, mutableListOf(
+            this@MainActivity,
+            mutableListOf(
                 AccessCoarseLocation,
                 AccessFineLocation,
                 AccessNetworkState,

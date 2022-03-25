@@ -10,6 +10,8 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
 import androidx.activity.result.ActivityResult
+import androidx.activity.result.ActivityResultCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -37,12 +39,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.lifecycleScope
+import androidx.core.app.ActivityOptionsCompat
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.photomanagementexercise.access.AccessPermissionType
 import com.example.photomanagementexercise.access.AccessPermissionType.*
 import com.example.photomanagementexercise.access.CheckAccessByVersionWrapper
-import com.example.photomanagementexercise.access.CheckPermissionUtility
 import com.example.photomanagementexercise.access.DefaultCheckAccessByVersionWrapper
 import com.example.photomanagementexercise.access.DefaultCheckPermissionUtility
 import com.example.photomanagementexercise.ui.theme.PhotoManagementExerciseTheme
@@ -72,6 +74,95 @@ class MainActivity : DefaultAppActivity() {
     private val galleryFileName = "gallery.image_%s.png"
     private val croppedFileName = "cropped.image_%s.png"
     private val emptyImageUri: Uri = Uri.parse("file://dev/null")
+    private val photoFromGalleryActivityCallback: ActivityResultCallback<ActivityResult> =
+        ActivityResultCallback<ActivityResult> { result ->
+            println("MROEBUCK: selectPhotoFromGallery() result=[$result]")
+            if (result.resultCode == RESULT_OK) {
+                coroutineScope.launch(Dispatchers.IO) {
+                    shouldShowOnProgress.value = true
+                    // There are no request codes
+                    val data = result.data
+                    println("MROEBUCK: selectPhotoFromGallery() data=[$data]")
+                    data?.let { intent ->
+                        println("MROEBUCK: selectPhotoFromGallery() intent=[$intent]")
+                        val uri = intent.data
+                        val extras = intent.extras
+                        intent.getParcelableExtra<Bitmap>("data")?.let { bitmap ->
+                            println("MROEBUCK: selectPhotoFromGallery() bitmap=[$bitmap]")
+                        }
+                        println("MROEBUCK: selectPhotoFromGallery() uri=[$uri]")
+                        uri?.let { inputStream(it) }
+                        shouldShowOnProgress.value = false
+                    } ?: println("MROEBUCK: selectPhotoFromGallery() data == null")
+                }
+            }
+        }
+    private val photoFromGalleryActivityResultLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.GetContent(),
+        ) { uri ->
+            coroutineScope.launch(Dispatchers.IO) {
+                shouldShowOnProgress.value = true
+                println("MROEBUCK: selectPhotoFromGallery() result=[$uri]")
+                uri?.let { inputStream(it) }
+                shouldShowOnProgress.value = false
+            }
+        }
+    private val galleryActivityResultLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+            var canContinue = true
+
+            currentPermissions.clear()
+            permissions.entries.forEach {
+                println("MROEBUCK: onSelectImage() ${it.key} = ${it.value}")
+                if (!it.value) {
+                    val nextPermission = AccessPermissionType.Companion.valueOf(it.key)
+                    currentPermissions.add(nextPermission)
+                    canContinue = false
+                }
+            }
+            if (canContinue) {
+                galleryActivityResult()
+            } else {
+                checkPermissionUtility.start(this@MainActivity, currentPermissions)
+            }
+        }
+    private val activityResultCallback: ActivityResultCallback<ActivityResult> =
+        ActivityResultCallback<ActivityResult> { result ->
+            println("MROEBUCK: result=[$result]")
+            if (result.resultCode == RESULT_OK) {
+                // There are no request codes
+                val data = result.data
+                val bitmap = data?.data
+                println("MROEBUCK: YAY!!")
+                checkPermissionUtility.continueRequestingPermissions()
+            }
+        }
+    private val activityResultLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult(),
+            activityResultCallback
+        )
+    private val requestPermissionCallback: ActivityResultCallback<Boolean> =
+        ActivityResultCallback<Boolean> { result ->
+            if (result == true) {
+                println("Permission Granted")
+                checkPermissionUtility.continueRequestingPermissions()
+            } else {
+                println("Permission Denied")
+            }
+        }
+    private val requestPermissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission(),
+            requestPermissionCallback
+        )
+    private val currentPermissions: MutableList<AccessPermissionType> = mutableListOf()
+    private val checkAccessByVersionWrapper: CheckAccessByVersionWrapper =
+        DefaultCheckAccessByVersionWrapper(activityResultLauncher, requestPermissionLauncher)
+    private val checkPermissionUtility = DefaultCheckPermissionUtility(checkAccessByVersionWrapper)
+
+    private lateinit var galleryActivityResult: () -> Unit
     private var photoOutput: Uri? = null
 
     private lateinit var shouldShowOnBoarding: MutableState<Boolean>
@@ -102,7 +193,7 @@ class MainActivity : DefaultAppActivity() {
         )
         Surface(modifier = Modifier.fillMaxSize()) {
             Card(
-                modifier =  Modifier
+                modifier = Modifier
                     .padding(all = 16.dp)
                     .fillMaxWidth()
                     .shadow(375.dp),
@@ -112,14 +203,14 @@ class MainActivity : DefaultAppActivity() {
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    if(shouldShowOnProgress.value) {
+                    if (shouldShowOnProgress.value) {
                         CreateLinearProgressIndicator(
                             modifier = Modifier,
                             color = Color.Green,
                             backgroundColor = Color.Red
                         )
                     }
-                    if(imageFiles.value.isNotEmpty()) {
+                    if (imageFiles.value.isNotEmpty()) {
                         LazyRow(modifier = Modifier.padding(vertical = 4.dp)) {
                             items(items = imageFiles.value) { uri ->
                                 AsyncImage(
@@ -319,65 +410,26 @@ class MainActivity : DefaultAppActivity() {
     }
 
     private fun onSelectImage(callback: () -> Unit) {
-        lifecycleScope.launch {
-            checkPermissionUtility.state.collect { value ->
-                val result = value.fold({ it }, {
-                    if(it) {
-                        callback()
-                    }
-                    it
-                })
-                println("value=[$value]")
-            }
-        }
-
-        checkPermissionUtility.start(
-            this@MainActivity,
-            mutableListOf(
-                AccessCoarseLocation,
-                AccessFineLocation,
-                AccessNetworkState,
-                AccessNotificationPolicy,
-                AccessWifiState,
-                AccessCamera,
-                AccessInternet,
-                AccessReadExternalStorage,
-                AccessAudioRecording,
-                AccessContacts
+        galleryActivityResult = callback
+        galleryActivityResultLauncher.launch(
+            arrayOf<String>(
+                AccessCoarseLocation.permission,
+                AccessFineLocation.permission,
+                AccessNetworkState.permission,
+                AccessNotificationPolicy.permission,
+                AccessWifiState.permission,
+                AccessCamera.permission,
+                AccessInternet.permission,
+                AccessReadExternalStorage.permission,
+                AccessAudioRecording.permission,
+                AccessContacts.permission
             )
         )
     }
 
     private fun selectPhotoFromGallery() {
-        val getIntent = Intent(Intent.ACTION_PICK)
-        getIntent.type = "image/*"
-
         photoOutput = Uri.fromFile(galleryImageFile())
-
-        activityLauncher.launch(getIntent, object :
-            AppActivityResult.OnActivityResult<ActivityResult> {
-            override fun onActivityResult(result: ActivityResult) {
-                if (result.resultCode == RESULT_OK) {
-                    coroutineScope.launch(Dispatchers.IO) {
-                        shouldShowOnProgress.value = true
-                        // There are no request codes
-                        val data = result.data
-                        println("MROEBUCK: data=[$data]")
-                        data?.let { intent ->
-                            println("MROEBUCK: intent=[$intent]")
-                            val uri = intent.data
-                            val extras = intent.extras
-                            intent.getParcelableExtra<Bitmap>("data")?.let { bitmap ->
-                                println("MROEBUCK: bitmap=[$bitmap]")
-                            }
-                            println("MROEBUCK: uri=[$uri]")
-                            uri?.let { inputStream(it) }
-                            shouldShowOnProgress.value = false
-                        } ?: Log.e(this::class.java.simpleName, "data == null")
-                    }
-                }
-            }
-        })
+        photoFromGalleryActivityResultLauncher.launch("image/*")
     }
 
     private fun inputStream(uri: Uri) {
@@ -395,7 +447,7 @@ class MainActivity : DefaultAppActivity() {
                 val list = imageFiles.value + output
                 imageFiles.value = list
             }
-        } catch(t: Throwable) {
+        } catch (t: Throwable) {
             println("MROEBUCK: inputStream() t=[$t]")
         }
     }
@@ -403,17 +455,7 @@ class MainActivity : DefaultAppActivity() {
     private fun takeScreenshotFromCamera() {
         val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
         photoOutput = Uri.fromFile(cameraImageFile())
-        activityLauncher.launch(intent, object :
-            AppActivityResult.OnActivityResult<ActivityResult> {
-            override fun onActivityResult(result: ActivityResult) {
-                if (result.resultCode == RESULT_OK) {
-                    // There are no request codes
-                    val data = result.data
-                    val bitmap = data?.data
-                    println("MROEBUCK: YAY!!")
-                }
-            }
-        })
+        activityResultLauncher.launch(intent, ActivityOptionsCompat.makeBasic())
     }
 //
 //    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {

@@ -8,14 +8,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
-import androidx.activity.ComponentActivity
-import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts.*
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.example.photomanagementexercise.AppActivityResult
-import com.example.photomanagementexercise.AppActivityResult.Companion.registerForActivityResult
 
 
 /**
@@ -98,7 +93,6 @@ interface CheckAccessByVersionWrapper {
      * @since 2.17
      */
     fun canAccessWriteExternalStorage(currentPermission: AccessPermissionType): Boolean
-    fun canCheckNormalPermission(): Boolean
 }
 
 /**
@@ -107,9 +101,9 @@ interface CheckAccessByVersionWrapper {
  * @since 2.17
  */
 class DefaultCheckAccessByVersionWrapper(
-    private val activityLauncher: AppActivityResult<Intent, ActivityResult>,
-    private val requestPermissionLauncher: AppActivityResult<String, ActivityResult>
-    ) : CheckAccessByVersionWrapper {
+    private val activityResultLauncher: ActivityResultLauncher<Intent>,
+    private val requestPermissionLauncher: ActivityResultLauncher<String>
+) : CheckAccessByVersionWrapper {
 
     override fun shouldShowRequestPermissionRationale(
         activity: Activity,
@@ -121,6 +115,7 @@ class DefaultCheckAccessByVersionWrapper(
         )
     }
 
+    @Deprecated("")
     override fun requestManageExternalStoragePermissions(
         activity: Activity,
         identifier: Int
@@ -141,45 +136,14 @@ class DefaultCheckAccessByVersionWrapper(
                 intent.action = Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION
                 intent
             }
-            activityLauncher.launch(intent, object :
-                AppActivityResult.OnActivityResult<ActivityResult> {
-                override fun onActivityResult(result: ActivityResult) {
-                    if (result.resultCode == ComponentActivity.RESULT_OK) {
-                        // There are no request codes
-                        val data = result.data
-                        val bitmap = data?.data
-                        println("MROEBUCK: YAY!!")
-                    }
-                }
-            })
+
+            activityResultLauncher.launch(intent)
         } else {
-            requestPermissions(
-                activity,
-                AccessPermissionType.AccessWriteExternalStorage.permission,
-                identifier
-            )
+            requestPermissionLauncher.launch(AccessPermissionType.AccessWriteExternalStorage.permission)
         }
     }
     override fun requestPermissions(activity: Activity, permission: String, identifier: Int) {
-        requestPermissionLauncher.launch(permission, object :
-            AppActivityResult.OnActivityResult<ActivityResult> {
-            override fun onActivityResult(result: ActivityResult) {
-                if (result.resultCode == ComponentActivity.RESULT_OK) {
-                    // There are no request codes
-//                    val data = result.data
-//                    val bitmap = data?.data
-                    println("MROEBUCK: YAY!!")
-                } else {
-                    println("MROEBUCK: NEY!!")
-                }
-                println("MROEBUCK: result=[$result]")
-            }
-        })
-//        ActivityCompat.requestPermissions(
-//            activity,
-//            arrayOf(permission),
-//            identifier
-//        )
+        requestPermissionLauncher.launch(permission)
     }
 
     override fun checkSelfPermission(activity: Activity, permission: String): Int {
@@ -201,10 +165,6 @@ class DefaultCheckAccessByVersionWrapper(
     override fun canAccessWriteExternalStorage(currentPermission: AccessPermissionType): Boolean {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
                 && currentPermission == AccessPermissionType.AccessWriteExternalStorage
-    }
-
-    override fun canCheckNormalPermission(): Boolean {
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
     }
 
     private fun isExternalStorageManager(activity: Activity): Boolean {

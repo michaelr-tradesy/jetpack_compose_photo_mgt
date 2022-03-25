@@ -12,9 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
@@ -22,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Camera
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.PhotoAlbum
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -36,7 +35,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle.Event.ON_START
+import androidx.lifecycle.Lifecycle.Event.ON_STOP
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleObserver
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.photomanagementexercise.access.AccessPermissionType
@@ -45,6 +49,13 @@ import com.example.photomanagementexercise.access.CheckAccessByVersionWrapper
 import com.example.photomanagementexercise.access.DefaultCheckAccessByVersionWrapper
 import com.example.photomanagementexercise.access.DefaultCheckPermissionUtility
 import com.example.photomanagementexercise.ui.theme.PhotoManagementExerciseTheme
+import com.google.android.exoplayer2.ExoPlayer
+import com.google.android.exoplayer2.MediaItem
+import com.google.android.exoplayer2.source.ProgressiveMediaSource
+import com.google.android.exoplayer2.ui.StyledPlayerView
+import com.google.android.exoplayer2.upstream.DataSource
+import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory
+import com.google.android.exoplayer2.util.Util
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -57,11 +68,13 @@ import java.util.*
 
 @ExperimentalMaterialApi
 @RequiresApi(Build.VERSION_CODES.O)
-class MainActivity : DefaultAppActivity() {
+class MainActivity : DefaultAppActivity(), LifecycleObserver {
 
     enum class PhotoSelectionType(val id: Int) {
         PhotoFromGallery(0x0101), PhotoFromCamera(0x0102)
     }
+
+    // region Properties
 
     private val cameraImageFilePrefix = "camera_image"
     private val imageWidth = 200
@@ -73,24 +86,24 @@ class MainActivity : DefaultAppActivity() {
     private val emptyImageUri: Uri = Uri.parse("file://dev/null")
     private val photoFromGalleryActivityCallback: ActivityResultCallback<ActivityResult> =
         ActivityResultCallback<ActivityResult> { result ->
-            println("MROEBUCK: selectPhotoFromGallery() result=[$result]")
+            println("ROEBUCK: selectPhotoFromGallery() result=[$result]")
             if (result.resultCode == RESULT_OK) {
                 coroutineScope.launch(Dispatchers.IO) {
                     shouldShowOnProgress.value = true
                     // There are no request codes
                     val data = result.data
-                    println("MROEBUCK: selectPhotoFromGallery() data=[$data]")
+                    println("ROEBUCK: selectPhotoFromGallery() data=[$data]")
                     data?.let { intent ->
-                        println("MROEBUCK: selectPhotoFromGallery() intent=[$intent]")
+                        println("ROEBUCK: selectPhotoFromGallery() intent=[$intent]")
                         val uri = intent.data
                         val extras = intent.extras
                         intent.getParcelableExtra<Bitmap>("data")?.let { bitmap ->
-                            println("MROEBUCK: selectPhotoFromGallery() bitmap=[$bitmap]")
+                            println("ROEBUCK: selectPhotoFromGallery() bitmap=[$bitmap]")
                         }
-                        println("MROEBUCK: selectPhotoFromGallery() uri=[$uri]")
+                        println("ROEBUCK: selectPhotoFromGallery() uri=[$uri]")
                         uri?.let { inputStream(it) }
                         shouldShowOnProgress.value = false
-                    } ?: println("MROEBUCK: selectPhotoFromGallery() data == null")
+                    } ?: println("ROEBUCK: selectPhotoFromGallery() data == null")
                 }
             }
         }
@@ -100,7 +113,7 @@ class MainActivity : DefaultAppActivity() {
         ) { uri ->
             coroutineScope.launch(Dispatchers.IO) {
                 shouldShowOnProgress.value = true
-                println("MROEBUCK: selectPhotoFromGallery() result=[$uri]")
+                println("ROEBUCK: selectPhotoFromGallery() result=[$uri]")
                 uri?.let { inputStream(it) }
                 shouldShowOnProgress.value = false
             }
@@ -112,10 +125,27 @@ class MainActivity : DefaultAppActivity() {
             if (isSuccessful) {
                 coroutineScope.launch(Dispatchers.IO) {
                     shouldShowOnProgress.value = true
-                    println("MROEBUCK: takePhoto() isSuccessful=[$isSuccessful]")
+                    println("ROEBUCK: takePhoto() isSuccessful=[$isSuccessful]")
                     photoOutput?.let {
                         val list = imageFiles.value + it
                         imageFiles.value = list
+                    }
+                    shouldShowOnProgress.value = false
+                }
+            }
+        }
+    private val recordVideoResultLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.CaptureVideo(),
+        ) { isSuccessful ->
+            if (isSuccessful) {
+                coroutineScope.launch(Dispatchers.IO) {
+                    shouldShowOnProgress.value = true
+                    println("ROEBUCK: takePhoto() isSuccessful=[$isSuccessful]")
+                    photoOutput?.let {
+                        val list = videoFiles.value + it
+                        videoFiles.value = list
+                        playingItemIndex.value = list.size - 1
                     }
                     shouldShowOnProgress.value = false
                 }
@@ -129,7 +159,7 @@ class MainActivity : DefaultAppActivity() {
 
             currentPermissions.clear()
             permissions.entries.forEach {
-                println("MROEBUCK: onSelectImage() ${it.key} = ${it.value}")
+                println("ROEBUCK: onSelectImage() ${it.key} = ${it.value}")
                 if (!it.value) {
                     val nextPermission = AccessPermissionType.Companion.valueOf(it.key)
                     currentPermissions.add(nextPermission)
@@ -144,12 +174,12 @@ class MainActivity : DefaultAppActivity() {
         }
     private val activityResultCallback: ActivityResultCallback<ActivityResult> =
         ActivityResultCallback<ActivityResult> { result ->
-            println("MROEBUCK: result=[$result]")
+            println("ROEBUCK: result=[$result]")
             if (result.resultCode == RESULT_OK) {
                 // There are no request codes
                 val data = result.data
                 val bitmap = data?.data
-                println("MROEBUCK: YAY!!")
+                println("ROEBUCK: YAY!!")
                 checkPermissionUtility.continueRequestingPermissions()
             }
         }
@@ -180,24 +210,91 @@ class MainActivity : DefaultAppActivity() {
     private lateinit var galleryActivityResult: () -> Unit
     private var photoOutput: Uri? = null
 
+    private lateinit var source: String
+    private lateinit var mediaPlayback: MediaPlayback
+    private lateinit var exoPlayer: ExoPlayer
+    private lateinit var playingItemIndex: MutableState<Int>
     private lateinit var shouldShowOnBoarding: MutableState<Boolean>
     private lateinit var shouldShowOnProgress: MutableState<Boolean>
     private lateinit var imageFiles: MutableState<List<Uri>>
+    private lateinit var videoFiles: MutableState<List<Uri>>
     private lateinit var coroutineScope: CoroutineScope
+
+    interface MediaPlayback {
+        fun playPause()
+        fun forward(durationInMillis: Long)
+        fun rewind(durationInMillis: Long)
+    }
+
+    // endregion
 
     @Composable
     override fun MyApp(savedInstanceState: Bundle?) {
+        playingItemIndex = rememberSaveable { mutableStateOf(-1) }
         shouldShowOnBoarding = rememberSaveable { mutableStateOf(true) }
         shouldShowOnProgress = rememberSaveable { mutableStateOf(false) }
         coroutineScope = rememberCoroutineScope()
         imageFiles = remember { mutableStateOf(listOf()) }
+        videoFiles = remember { mutableStateOf(listOf()) }
+        val context = LocalContext.current
+
+        // This is the official way to access current context from Composable functions
+        // Do not recreate the player everytime this Composable commits
+        exoPlayer = remember(context) {
+            ExoPlayer.Builder(context).build().apply {
+//                setMediaItem(MediaItem.fromUri(uri), 0)
+//                prepare()
+//                playWhenReady = isPlaying
+            }
+        }
+
+        mediaPlayback = getMediaPlayback()
+
+
+        val lifecycleOwner = this.lifecycle
 
         if (shouldShowOnBoarding.value) {
             ShowOnBoardingScreen(onContinueClicked = {
 //                shouldShowOnBoarding.value = false
             })
+            StartVideoIfNecessary()
         } else {
             ShowGreetings()
+        }
+    }
+
+    @Composable
+    private fun StartVideoIfNecessary() {
+        val lifecycleOwner = this@MainActivity.lifecycle
+
+        if (videoFiles.value.isNotEmpty()) {
+            LaunchedEffect(playingItemIndex) {
+                if (playingItemIndex.value < 0) {
+                    exoPlayer.pause()
+                } else {
+                    val index = videoFiles.value.size - 1
+                    val video = videoFiles.value.last()
+                    exoPlayer.setMediaItem(MediaItem.fromUri(video), 0)
+                    exoPlayer.prepare()
+                    exoPlayer.playWhenReady = true
+                }
+            }
+            DisposableEffect(exoPlayer) {
+                val lifecycleObserver = LifecycleEventObserver { _, event ->
+                    if (playingItemIndex.value < 0) return@LifecycleEventObserver
+                    when (event) {
+                        ON_START -> exoPlayer.play()
+                        ON_STOP -> exoPlayer.pause()
+                        else -> {}
+                    }
+                }
+
+                lifecycleOwner.addObserver(this@MainActivity)
+                onDispose {
+                    lifecycleOwner.removeObserver(this@MainActivity)
+                    exoPlayer.release()
+                }
+            }
         }
     }
 
@@ -226,6 +323,11 @@ class MainActivity : DefaultAppActivity() {
                         )
                     }
                     if (imageFiles.value.isNotEmpty()) {
+                        Text(
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center,
+                            text = stringResource(R.string.included_images)
+                        )
                         LazyRow(modifier = Modifier.padding(vertical = 4.dp)) {
                             items(items = imageFiles.value) { uri ->
                                 AsyncImage(
@@ -250,6 +352,69 @@ class MainActivity : DefaultAppActivity() {
                             modifier = Modifier.fillMaxWidth(),
                             textAlign = TextAlign.Center,
                             text = stringResource(R.string.no_images_available)
+                        )
+                    }
+
+                    if (videoFiles.value.isNotEmpty()) {
+                        Text(
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center,
+                            text = stringResource(R.string.included_videos)
+                        )
+                        LazyRow(modifier = Modifier.padding(vertical = 4.dp)) {
+                            itemsIndexed(
+                                items = videoFiles.value,
+                                key = { _, video -> video }) { index, uri ->
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    VideoPlayer(
+                                        uri = uri,
+                                        isPlaying = index == playingItemIndex.value
+                                    ) {
+                                        println("ROEBUCK: ShowOnBoardingScreen() currentPosition=[${exoPlayer.currentPosition}], index=[$index]")
+//                                        viewModel.onPlayVideoClick(exoPlayer.currentPosition, index)
+                                    }
+                                }
+//                                Row {
+//                                    IconButton(onClick = {
+//                                        mediaPlayback.rewind(10_000)
+//                                    }) {
+//                                        Icon(
+//                                            imageVector = Icons.Default.ArrowBack,
+//                                            contentDescription = null,
+//                                            modifier = Modifier.padding(start = 4.dp),
+//                                            tint = Color.Black
+//                                        )
+//                                    }
+//
+//                                    IconButton(onClick = {
+//                                        mediaPlayback.playPause()
+//                                    }) {
+//                                        Icon(
+//                                            imageVector = Icons.Default.PlayArrow,
+//                                            contentDescription = null,
+//                                            modifier = Modifier.padding(start = 4.dp),
+//                                            tint = Color.Black
+//                                        )
+//                                    }
+//
+//                                    IconButton(onClick = {
+//                                        mediaPlayback.forward(10_000)
+//                                    }) {
+//                                        Icon(
+//                                            imageVector = Icons.Default.ArrowForward,
+//                                            contentDescription = null,
+//                                            modifier = Modifier.padding(start = 4.dp),
+//                                            tint = Color.Black
+//                                        )
+//                                    }
+//                                }
+                            }
+                        }
+                    } else {
+                        Text(
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center,
+                            text = stringResource(R.string.no_videos_available)
                         )
                     }
                     Text(
@@ -279,7 +444,7 @@ class MainActivity : DefaultAppActivity() {
                                 Column {
                                     OutlinedButton(
                                         onClick = {
-                                            println("MROEBUCK: Choosing from Gallery...")
+                                            println("ROEBUCK: Choosing from Gallery...")
                                             coroutineScope.launch {
                                                 bottomSheetScaffoldState.bottomSheetState.collapse()
                                                 onSelectImage { selectPhotoFromGallery() }
@@ -310,7 +475,7 @@ class MainActivity : DefaultAppActivity() {
                                 Column {
                                     OutlinedButton(
                                         onClick = {
-                                            println("MROEBUCK: Take Photo From Camera...")
+                                            println("ROEBUCK: Take Photo From Camera...")
                                             coroutineScope.launch {
                                                 bottomSheetScaffoldState.bottomSheetState.collapse()
                                                 onSelectImage { takeScreenshotFromCamera() }
@@ -338,10 +503,41 @@ class MainActivity : DefaultAppActivity() {
                                 }
                             }
                             Row(modifier = Modifier.fillMaxWidth()) {
+                                Column {
+                                    OutlinedButton(
+                                        onClick = {
+                                            println("ROEBUCK: Record Video...")
+                                            coroutineScope.launch {
+                                                bottomSheetScaffoldState.bottomSheetState.collapse()
+                                                onSelectImage { recordVideo() }
+                                            }
+                                        },
+                                        modifier = Modifier,
+                                        colors = ButtonDefaults.buttonColors(
+                                            backgroundColor = Color.White
+                                        ),
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Videocam,
+                                            contentDescription = null,
+                                            modifier = Modifier.padding(start = 4.dp),
+                                            tint = Color.Black
+                                        )
+                                        Text(
+                                            modifier = Modifier.padding(4.dp, 0.dp),
+                                            color = Color.Gray,
+                                            text = "Record Video"
+                                        )
+                                    }
+                                    Divider()
+                                }
+                            }
+                            Row(modifier = Modifier.fillMaxWidth()) {
                                 Column() {
                                     OutlinedButton(
                                         onClick = {
-                                            println("MROEBUCK: Cancelling...")
+                                            println("ROEBUCK: Cancelling...")
                                             coroutineScope.launch {
                                                 bottomSheetScaffoldState.bottomSheetState.collapse()
                                             }
@@ -371,6 +567,76 @@ class MainActivity : DefaultAppActivity() {
                     ) {
 
                     }
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun VideosScreen() {
+        val listState = rememberLazyListState()
+        val isCurrentItemVisible = remember { mutableStateOf(false) }
+
+        LaunchedEffect(Unit) {
+            snapshotFlow {
+                listState.visibleAreaContainsItem()
+            }.collect { isItemVisible ->
+                isCurrentItemVisible.value = isItemVisible
+            }
+        }
+        LaunchedEffect(isCurrentItemVisible.value) {
+            if (!isCurrentItemVisible.value && playingItemIndex.value > -1) {
+                println("MROEBUCK: VideoScreen() currentPosition=[${exoPlayer.currentPosition}] playingItemIndex=[${playingItemIndex.value}]")
+//                viewModel.onPlayVideoClick(exoPlayer.currentPosition, playingItemIndex!!)
+            }
+        }
+    }
+
+    private fun LazyListState.visibleAreaContainsItem(): Boolean {
+        return when {
+            playingItemIndex.value < 0 -> false
+            videoFiles.value.isEmpty() -> false
+            else -> {
+                layoutInfo.visibleItemsInfo.map { videoFiles.value[it.index] }
+                    .contains(videoFiles.value[playingItemIndex.value])
+            }
+        }
+    }
+
+    @Composable
+    fun VideoPlayer(uri: Uri, isPlaying: Boolean, onClick: () -> Unit) {
+        val context = LocalContext.current
+
+        exoPlayer.apply {
+            stop()
+            setMediaItem(MediaItem.fromUri(uri), 0)
+            prepare()
+            playWhenReady = false
+
+        }
+        // Gateway to traditional Android Views
+        AndroidView({ localContext ->
+            StyledPlayerView(localContext).apply {
+                player = exoPlayer
+//                setOnClickListener { onClick() }
+            }
+        })
+    }
+
+    @Composable
+    private fun getMediaPlayback(): MediaPlayback {
+        return remember(exoPlayer) {
+            object : MediaPlayback {
+                override fun playPause() {
+                    exoPlayer.playWhenReady = !exoPlayer.playWhenReady
+                }
+
+                override fun forward(durationInMillis: Long) {
+                    exoPlayer.seekTo(exoPlayer.currentPosition + durationInMillis)
+                }
+
+                override fun rewind(durationInMillis: Long) {
+                    exoPlayer.seekTo(exoPlayer.currentPosition - durationInMillis)
                 }
             }
         }
@@ -408,6 +674,8 @@ class MainActivity : DefaultAppActivity() {
     private fun Greeting(name: String) {
         Text(text = "Hello $name!")
     }
+
+    // region Private Methods
 
     private fun croppedImageFile() = createFileName(croppedFileName)
     private fun cameraImageFile() = createFileName(cameraFileName)
@@ -460,16 +728,16 @@ class MainActivity : DefaultAppActivity() {
                 val options = BitmapFactory.Options()
                 options.inJustDecodeBounds = false
                 val inputStream: InputStream? = contentResolver.openInputStream(uri)
-                println("MROEBUCK: inputStream() inputStream=[$inputStream]")
+                println("ROEBUCK: inputStream() inputStream=[$inputStream]")
                 val bitmap = BitmapFactory.decodeStream(inputStream, null, options)
                 bitmap?.compress(Bitmap.CompressFormat.PNG, 100, out)
-                println("MROEBUCK: inputStream() bitmap=[$bitmap]")
+                println("ROEBUCK: inputStream() bitmap=[$bitmap]")
 
                 val list = imageFiles.value + output
                 imageFiles.value = list
             }
         } catch (t: Throwable) {
-            println("MROEBUCK: inputStream() t=[$t]")
+            println("ROEBUCK: inputStream() t=[$t]")
         }
     }
 
@@ -483,6 +751,18 @@ class MainActivity : DefaultAppActivity() {
             )
 
         takePhotoActivityResultLauncher.launch(photoOutput)
+    }
+
+    private fun recordVideo() {
+        val file = cameraImageFile()
+        photoOutput =
+            FileProvider.getUriForFile(
+                this,
+                applicationContext.packageName + ".provider",
+                file
+            )
+
+        recordVideoResultLauncher.launch(photoOutput)
     }
 //
 //    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -521,6 +801,10 @@ class MainActivity : DefaultAppActivity() {
 //            }
 //        }
 //    }
+
+    // endregion
+
+    // region Preview Design
 
     @Preview(
         fontScale = 1.5f,
@@ -585,4 +869,6 @@ class MainActivity : DefaultAppActivity() {
             Greeting("Android")
         }
     }
+
+    // endregion
 }

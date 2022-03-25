@@ -4,4 +4,7 @@
     <string name="instructions">To begin adding images, press the ADD IMAGE button.</string>
     <string name="no_images_available">No images are available.</string>
     <string name="image_included">Image Included</string>
+    <string name="included_images">Included Images</string>
+    <string name="no_videos_available">No Videos Available</string>
+    <string name="included_videos">Included Videos</string>
 </resources>

@@ -60,9 +60,9 @@ dependencies {
 //    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.4.0'
 //    implementation "androidx.lifecycle:lifecycle-viewmodel-savedstate:2.5.0-alpha01"
     implementation("androidx.activity:activity-compose:1.4.0")
-    implementation("androidx.activity:activity-ktx:1.5.0-alpha03")
-    implementation "androidx.compose.material:material-icons-extended:$compose_version"
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.5.0-alpha04")
+    implementation("androidx.activity:activity-ktx:1.6.0-alpha01")
+    implementation("androidx.compose.material:material-icons-extended:$compose_version")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.5.0-alpha05")
     implementation("io.arrow-kt:arrow-core:$arrow_version")
     kapt("io.arrow-kt:arrow-meta:$arrow_version")
     implementation("com.arkivanov.mvikotlin:mvikotlin:$mvi_kotlin_version")
@@ -75,7 +75,7 @@ dependencies {
     implementation("com.arkivanov.mvikotlin:rx:$mvi_kotlin_version")
     implementation("com.badoo.reaktive:reaktive:1.1.22")
     implementation("com.google.accompanist:accompanist-systemuicontroller:0.17.0")
-
+    implementation("com.google.android.exoplayer:exoplayer:2.17.1")
     implementation("com.google.android.gms:play-services-auth:$google_api_version")
     implementation("com.google.android.gms:play-services-location:$google_api_location_version")
     implementation("com.google.android.gms:play-services-maps:$google_maps_api_version")

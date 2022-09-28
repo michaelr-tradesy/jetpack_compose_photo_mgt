@@ -49,6 +49,7 @@ import com.example.photomanagementexercise.access.CheckAccessByVersionWrapper
 import com.example.photomanagementexercise.access.DefaultCheckAccessByVersionWrapper
 import com.example.photomanagementexercise.access.DefaultCheckPermissionUtility
 import com.example.photomanagementexercise.ui.theme.PhotoManagementExerciseTheme
+import com.google.android.exoplayer2.C.VIDEO_SCALING_MODE_SCALE_TO_FIT
 import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.source.ProgressiveMediaSource
@@ -365,7 +366,7 @@ class MainActivity : DefaultAppActivity(), LifecycleObserver {
                             itemsIndexed(
                                 items = videoFiles.value,
                                 key = { _, video -> video }) { index, uri ->
-                                Column(modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.fillMaxWidth().height(256.dp)) {
                                     VideoPlayer(
                                         uri = uri,
                                         isPlaying = index == playingItemIndex.value
@@ -608,6 +609,7 @@ class MainActivity : DefaultAppActivity(), LifecycleObserver {
         val context = LocalContext.current
 
         exoPlayer.apply {
+            videoScalingMode = VIDEO_SCALING_MODE_SCALE_TO_FIT
             stop()
             setMediaItem(MediaItem.fromUri(uri), 0)
             prepare()
